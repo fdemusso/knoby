@@ -38,9 +38,9 @@ impl Corner {
 pub struct Config {
     /// Volume change per knob detent, as a fraction (0.03 = 3%).
     pub volume_step: f32,
-    /// Knob detents needed to move the overlay selection by one icon.
+    /// Knob detents needed to move the overlay selection by one icon (1 = every detent).
     pub select_detents: i32,
-    /// Minimum time between two selection moves.
+    /// Speed limit: detents sooner than this after the last move are ignored.
     pub select_min_ms: u128,
     /// Window in which a second click counts as a double click.
     pub double_click_ms: u32,
@@ -55,7 +55,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             volume_step: 0.03,
-            select_detents: 2,
+            select_detents: 1,
             select_min_ms: 90,
             double_click_ms: 250,
             select_timeout_ms: 4000,
@@ -71,9 +71,10 @@ pub const DEFAULT_FILE: &str = "\
 # Volume change per knob detent, in percent (1-20).
 volume_step = 3
 
-# Knob detents needed to move the channel picker by one icon (1-6),
-# and the minimum time between two moves in milliseconds (0-500).
-select_detents = 2
+# Knob detents needed to move the channel picker by one icon (1-6): 1 means
+# every detent moves one icon. select_min_ms is the speed limit: detents
+# arriving sooner than this after the last move are ignored (0-500).
+select_detents = 1
 select_min_ms = 90
 
 # A second click within this many milliseconds is a double click (100-600);
@@ -165,7 +166,7 @@ mod tests {
         assert!(w.is_empty());
         assert_eq!(cfg.volume_step, 0.05);
         assert_eq!(cfg.overlay_corner, Corner::BottomLeft);
-        assert_eq!(cfg.select_detents, 2);
+        assert_eq!(cfg.select_detents, 1);
     }
 
     #[test]

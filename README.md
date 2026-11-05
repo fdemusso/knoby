@@ -50,8 +50,8 @@ tray menu: **Open config file** to edit it, **Reload config** to apply changes w
 | Setting | Default | Meaning |
 |---|---|---|
 | `volume_step` | `3` | Volume change per knob detent, in percent (1-20) |
-| `select_detents` | `2` | Detents needed to move the picker by one icon (1-6) |
-| `select_min_ms` | `90` | Minimum time between two picker moves (0-500) |
+| `select_detents` | `1` | Detents needed to move the picker by one icon (1-6); 1 = every detent moves one icon |
+| `select_min_ms` | `90` | Speed limit: detents sooner than this after the last move are ignored (0-500) |
 | `double_click_ms` | `250` | Double-click window; a single click (mute) fires after this delay (100-600) |
 | `select_timeout_ms` | `4000` | The picker closes after this long without input (1000-15000) |
 | `overlay_corner` | `"top-right"` | `top-right`, `top-left`, `bottom-right` or `bottom-left` |

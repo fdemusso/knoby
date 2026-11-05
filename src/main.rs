@@ -237,16 +237,20 @@ fn open_overlay() {
 fn move_selection(i: usize, up: bool) {
     let (hwnd, timeout_ms) = with_app(|a| {
         let dir = if up { 1 } else { -1 };
-        // A direction change restarts the count; same-direction detents add up.
-        a.sel_accum = if a.sel_accum.signum() == -dir { dir } else { a.sel_accum + dir };
+        // Speed limit: detents arriving too soon after the last move are dropped,
+        // not queued, so the picker never keeps moving after you stop turning.
         let throttled = a.last_sel_move.is_some_and(|t| t.elapsed().as_millis() < a.cfg.select_min_ms);
-        if a.sel_accum.abs() >= a.cfg.select_detents && !throttled {
-            a.sel_accum = 0;
-            a.last_sel_move = Some(Instant::now());
-            let n = a.wl.shared.lock().unwrap().channels.len();
-            let next = if up { (i + 1) % n } else { (i + n - 1) % n };
-            a.selecting = Some(next);
-            a.overlay.set_selection(next);
+        if !throttled {
+            // A direction change restarts the count; same-direction detents add up.
+            a.sel_accum = if a.sel_accum.signum() == -dir { dir } else { a.sel_accum + dir };
+            if a.sel_accum.abs() >= a.cfg.select_detents {
+                a.sel_accum = 0;
+                a.last_sel_move = Some(Instant::now());
+                let n = a.wl.shared.lock().unwrap().channels.len();
+                let next = if up { (i + 1) % n } else { (i + n - 1) % n };
+                a.selecting = Some(next);
+                a.overlay.set_selection(next);
+            }
         }
         (a.hwnd, a.cfg.select_timeout_ms)
     });

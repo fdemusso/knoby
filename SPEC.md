@@ -20,7 +20,7 @@ Due stati:
 
 **Fisso, 3% (0.03) per scatto** (`VOLUME_STEP`). Un'accelerazione basata sulla velocità di rotazione (1% → 5%) è stata provata e scartata perché dava fastidio nell'uso reale; il codice è nella cronologia git (modulo `accel.rs`).
 
-In modalità overlay servono 2 scatti per spostare la selezione di un'icona, con almeno 90 ms tra due spostamenti.
+In modalità overlay **ogni scatto sposta la selezione di un'icona** (`select_detents = 1`). Se si gira troppo veloce vale un limite di velocità: gli scatti che arrivano a meno di 90 ms dal precedente spostamento vengono scartati (non messi in coda, così la selezione non continua a muoversi dopo che ci si è fermati).
 
 ## Configurazione
 
