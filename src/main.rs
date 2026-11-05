@@ -25,6 +25,10 @@ const T_ANIM: usize = 3;
 const CLICK_MS: u32 = 250;
 const SEL_MS: u32 = 4000;
 const FRAME_MS: u32 = 15;
+/// Knob detents needed to move the overlay selection by one icon, and the
+/// minimum time between two selection moves.
+const SEL_DETENTS: i32 = 2;
+const SEL_MIN_MS: u128 = 90;
 
 const VK_VOLUME_MUTE: u32 = 0xAD;
 const VK_VOLUME_DOWN: u32 = 0xAE;
@@ -51,6 +55,9 @@ struct App {
     selecting: Option<usize>,
     click_pending: bool,
     preview_done: bool,
+    /// Net detents accumulated towards the next selection move (sign = direction).
+    sel_accum: i32,
+    last_sel_move: Option<Instant>,
 }
 
 thread_local! {
@@ -73,6 +80,10 @@ fn state_path() -> Option<std::path::PathBuf> {
 }
 
 fn load_active() -> Option<String> {
+    // Dev/testing override so a test run doesn't touch the saved channel.
+    if let Ok(id) = std::env::var("KNOBY_ACTIVE") {
+        return Some(id);
+    }
     Some(std::fs::read_to_string(state_path()?).ok()?.trim().to_owned())
 }
 
@@ -90,6 +101,11 @@ fn debug() -> bool {
     *ON.get_or_init(|| std::env::var_os("KNOBY_DEBUG").is_some())
 }
 
+fn accept_injected() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("KNOBY_ACCEPT_INJECTED").is_some())
+}
+
 // --- input -----------------------------------------------------------------
 
 fn ready() -> bool {
@@ -105,7 +121,8 @@ fn ready() -> bool {
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
         let kb = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
-        if kb.flags.0 & LLKHF_INJECTED == 0 {
+        // KNOBY_ACCEPT_INJECTED lets scripted key presses drive Knoby (dev/testing).
+        if kb.flags.0 & LLKHF_INJECTED == 0 || accept_injected() {
             let key = match kb.vkCode {
                 VK_VOLUME_UP | VK_F15 => Some(Key::Up),
                 VK_VOLUME_DOWN | VK_F14 => Some(Key::Down),
@@ -154,6 +171,9 @@ fn adjust(up: bool) {
         ch.local_set = Some(Instant::now());
         let (id, level) = (ch.id.clone(), ch.level);
         drop(g);
+        if debug() {
+            eprintln!("  adjust step={d:+.4} -> level={level}");
+        }
         a.wl.set_level(&id, level);
     });
 }
@@ -207,10 +227,18 @@ fn open_overlay() {
 
 fn move_selection(i: usize, up: bool) {
     let hwnd = with_app(|a| {
-        let n = a.wl.shared.lock().unwrap().channels.len();
-        let next = if up { (i + 1) % n } else { (i + n - 1) % n };
-        a.selecting = Some(next);
-        a.overlay.set_selection(next);
+        let dir = if up { 1 } else { -1 };
+        // A direction change restarts the count; same-direction detents add up.
+        a.sel_accum = if a.sel_accum.signum() == -dir { dir } else { a.sel_accum + dir };
+        let throttled = a.last_sel_move.is_some_and(|t| t.elapsed().as_millis() < SEL_MIN_MS);
+        if a.sel_accum.abs() >= SEL_DETENTS && !throttled {
+            a.sel_accum = 0;
+            a.last_sel_move = Some(Instant::now());
+            let n = a.wl.shared.lock().unwrap().channels.len();
+            let next = if up { (i + 1) % n } else { (i + n - 1) % n };
+            a.selecting = Some(next);
+            a.overlay.set_selection(next);
+        }
         a.hwnd
     });
     unsafe {
@@ -333,6 +361,8 @@ fn main() -> windows::core::Result<()> {
                 selecting: None,
                 click_pending: false,
                 preview_done: false,
+                sel_accum: 0,
+                last_sel_move: None,
             });
         });
 

@@ -12,7 +12,10 @@ use tungstenite::http::HeaderValue;
 use tungstenite::{Message, WebSocket};
 
 const PACKAGE: &str = "Elgato.WaveLink_g54w8ztgkx496";
-const ECHO_WINDOW: Duration = Duration::from_millis(250);
+/// After we set a level ourselves, level notifications for that channel are
+/// ignored for this long: they are (possibly late) echoes of our own writes
+/// and would otherwise overwrite the cache with stale values.
+const ECHO_WINDOW: Duration = Duration::from_millis(700);
 
 /// Premultiplied BGRA pixels, ready for `AlphaBlend`.
 pub struct Icon {
@@ -100,7 +103,9 @@ fn session(
     req.headers_mut()
         .insert("Origin", HeaderValue::from_static("streamdeck://"));
     let (mut ws, _) = tungstenite::client(req, stream)?;
-    ws.get_mut().set_read_timeout(Some(Duration::from_millis(30)))?;
+    // Short read timeout = low latency for outgoing commands, which are only
+    // drained between reads.
+    ws.get_mut().set_read_timeout(Some(Duration::from_millis(5)))?;
 
     send(&mut ws, json!({"jsonrpc":"2.0","id":1,"method":"getChannels"}))?;
 
