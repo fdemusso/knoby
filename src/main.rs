@@ -27,6 +27,8 @@ const VK_VOLUME_MUTE: u32 = 0xAD;
 const VK_VOLUME_DOWN: u32 = 0xAE;
 const VK_VOLUME_UP: u32 = 0xAF;
 const VK_F13: u32 = 0x7C;
+const VK_F14: u32 = 0x7D;
+const VK_F15: u32 = 0x7E;
 const LLKHF_INJECTED: u32 = 0x10;
 
 const BG: COLORREF = COLORREF(0x001e1e1e);
@@ -107,14 +109,19 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
         let kb = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         if kb.flags.0 & LLKHF_INJECTED == 0 {
             let key = match kb.vkCode {
-                VK_VOLUME_UP => Some(Key::Up),
-                VK_VOLUME_DOWN => Some(Key::Down),
+                VK_VOLUME_UP | VK_F15 => Some(Key::Up),
+                VK_VOLUME_DOWN | VK_F14 => Some(Key::Down),
                 VK_VOLUME_MUTE | VK_F13 => Some(Key::Click),
                 _ => None,
             };
             if let Some(key) = key {
-                if ready() {
-                    if matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
+                let is_down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+                let ready = ready();
+                if debug() {
+                    eprintln!("key vk={:#x} down={is_down} ready={ready}", kb.vkCode);
+                }
+                if ready {
+                    if is_down {
                         handle_key(key);
                     }
                     return LRESULT(1);
@@ -125,8 +132,16 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
+fn debug() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("KNOBY_DEBUG").is_some())
+}
+
 fn handle_key(key: Key) {
     let selecting = with_app(|a| a.selecting);
+    if debug() {
+        eprintln!("  handle_key selecting={selecting:?}");
+    }
     match (selecting, key) {
         (None, Key::Click) => click_normal(),
         (None, k) => adjust(k == Key::Up),

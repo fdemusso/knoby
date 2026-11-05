@@ -25,8 +25,11 @@ software channel you create in Wave Link shows up automatically.
 
 - Windows 11
 - Elgato Wave Link 3.x (developed against 3.4.0, build 4650)
-- A knob that sends `VOLUME_UP` / `VOLUME_DOWN`, plus its click remapped to `F13` in VIA
-  (the default `VOLUME_MUTE` also works)
+- A knob remapped in VIA to unused keys: counter-clockwise → `F14`, clockwise → `F15`, click → `F13`.
+  (Knoby also accepts `VOLUME_UP` / `VOLUME_DOWN` / `VOLUME_MUTE`, but on the author's keyboard the
+  media-key rotation never reached the keyboard hook, so dedicated F-keys are the supported setup.)
+
+Set `KNOBY_DEBUG=1` to log every intercepted key to stderr.
 
 ## Build
 

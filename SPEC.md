@@ -37,8 +37,8 @@ I canali stanno di solito su livelli bassi (0.10–0.15), quindi il passo fine d
 ## Input
 
 - Hook globale `WH_KEYBOARD_LL`.
-- Rotazione: tasti media `VOLUME_UP` / `VOLUME_DOWN`, intercettati e bloccati (il volume di sistema non si muove).
-- Click: rimappato in VIA su `F13` (a cura dell'utente), così non confligge con il `VOLUME_MUTE` di sistema. Knoby intercetta `F13` e lo blocca.
+- Mappatura VIA (verificata sulla tastiera dell'utente): rotazione antioraria → `F14`, oraria → `F15`, click → `F13`. Knoby intercetta e blocca questi tasti.
+- I tasti media (`VOLUME_UP/DOWN/MUTE`) sono accettati come alternativa, ma sulla tastiera dell'utente la rotazione non arrivava all'hook (il mute sì): causa non indagata, si usano i tasti F.
 
 ## Wave Link (verificato su 3.4.0 build 4650)
 
