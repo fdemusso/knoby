@@ -1,12 +1,17 @@
+// Release builds have no console window; debug builds keep it for logging.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod overlay;
+mod tray;
 mod wavelink;
 
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::time::Instant;
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForSystem, SetProcessDpiAwarenessContext,
 };
@@ -320,12 +325,46 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
             }
             LRESULT(0)
         }
+        tray::WM_TRAY => {
+            if matches!((lparam.0 & 0xFFFF) as u32, WM_RBUTTONUP | WM_CONTEXTMENU) {
+                let status = with_app(|a| {
+                    let g = a.wl.shared.lock().unwrap();
+                    if !g.connected {
+                        return "Waiting for Wave Link...".to_owned();
+                    }
+                    let idx = active_index(&a.active, &g.channels);
+                    format!("Active channel: {}", g.channels.get(idx).map_or("-", |c| c.name.as_str()))
+                });
+                if tray::show_menu(hwnd, &status) {
+                    tray::remove(hwnd);
+                    unsafe {
+                        PostQuitMessage(0);
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        // Explorer restarted: the notification area was wiped, add the icon again.
+        m if m == taskbar_created() => {
+            tray::add(hwnd);
+            LRESULT(0)
+        }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
 
+fn taskbar_created() -> u32 {
+    static MSG: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *MSG.get_or_init(|| unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) })
+}
+
 fn main() -> windows::core::Result<()> {
     unsafe {
+        // Two instances would both hook the keyboard and fight over the keys.
+        let _single = CreateMutexW(None, true, w!("Local\\KnobySingleInstance"))?;
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            return Ok(());
+        }
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let hinst = GetModuleHandleW(PCWSTR::null())?;
         let class = w!("KnobyOverlay");
@@ -364,7 +403,8 @@ fn main() -> windows::core::Result<()> {
         });
 
         let _hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), Some(hinst.into()), 0)?;
-        println!("knoby running (Ctrl+C to quit)");
+        tray::add(hwnd);
+        println!("knoby running (tray icon > Quit, or Ctrl+C)");
 
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {

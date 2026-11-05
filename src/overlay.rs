@@ -383,7 +383,7 @@ impl Overlay {
 }
 
 /// Signed distance from (px, py) to a rounded rectangle centred at the origin.
-fn sd_round_rect(px: f32, py: f32, hw: f32, hh: f32, r: f32) -> f32 {
+pub fn sd_round_rect(px: f32, py: f32, hw: f32, hh: f32, r: f32) -> f32 {
     let (qx, qy) = (px.abs() - (hw - r), py.abs() - (hh - r));
     (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() + qx.max(qy).min(0.0) - r
 }

@@ -31,11 +31,15 @@ software channel you create in Wave Link shows up automatically.
 
 Set `KNOBY_DEBUG=1` to log every intercepted key to stderr.
 
-## Build
+## Build and run
 
 ```
 cargo build --release
 ```
+
+The release binary (`target/release/knoby.exe`, ~650 KB) runs without a console window. Knoby lives in
+the notification area: right-click its icon for the status and **Quit**. Only one instance runs at a time.
+Debug builds (`cargo run`) keep the console for logging.
 
 ## Wave Link API notes
 
