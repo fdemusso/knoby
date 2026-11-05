@@ -1,0 +1,11 @@
+[package]
+name = "knoby"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.23.1"
+png = "0.18.1"
+serde_json = "1.0.154"
+tungstenite = "0.30.0"
+windows = "0.62.2"
