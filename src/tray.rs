@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::System::Registry::*;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::PCWSTR;
@@ -13,6 +14,7 @@ use crate::overlay::sd_round_rect;
 pub const WM_TRAY: u32 = WM_APP + 2;
 const TRAY_ID: u32 = 1;
 const ID_QUIT: usize = 1;
+const ID_AUTOSTART: usize = 2;
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
@@ -82,6 +84,16 @@ fn icon_pixels(s: i32) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    /// Round-trips a Run value under a throwaway name (never touches "Knoby").
+    #[test]
+    fn run_key_roundtrip() {
+        let name = "KnobyTestEntry";
+        assert!(super::set_run_value(name, Some("\"C:\\x y\\knoby.exe\"")));
+        assert_eq!(super::run_value(name).as_deref(), Some("\"C:\\x y\\knoby.exe\""));
+        assert!(super::set_run_value(name, None));
+        assert_eq!(super::run_value(name), None);
+    }
+
     /// Dev aid: KNOBY_ICON_DUMP=<file.png> writes the icon, nearest-neighbour
     /// enlarged 8x, over a mid-grey background so the shape can be eyeballed.
     #[test]
@@ -139,17 +151,26 @@ pub fn remove(hwnd: HWND) {
     }
 }
 
-/// Shows the context menu at the cursor. Returns true if "Quit" was chosen.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Choice {
+    ToggleAutostart,
+    Quit,
+}
+
+/// Shows the context menu at the cursor and returns the chosen item, if any.
 /// Runs a nested message loop, so callers must not hold any borrow.
-pub fn show_menu(hwnd: HWND, status: &str) -> bool {
+pub fn show_menu(hwnd: HWND, status: &str) -> Option<Choice> {
     unsafe {
-        let Ok(menu) = CreatePopupMenu() else { return false };
+        let menu = CreatePopupMenu().ok()?;
         let title = wide("Knoby");
         let status = wide(status);
+        let autostart = wide("Start with Windows");
         let quit = wide("Quit");
+        let checked = if autostart_enabled() { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, PCWSTR(title.as_ptr()));
         let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, PCWSTR(status.as_ptr()));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+        let _ = AppendMenuW(menu, MF_STRING | checked, ID_AUTOSTART, PCWSTR(autostart.as_ptr()));
         let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, PCWSTR(quit.as_ptr()));
 
         let mut pt = POINT::default();
@@ -159,6 +180,70 @@ pub fn show_menu(hwnd: HWND, status: &str) -> bool {
         let cmd = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_BOTTOMALIGN, pt.x, pt.y, None, hwnd, None);
         let _ = PostMessageW(Some(hwnd), WM_NULL, Default::default(), Default::default());
         let _ = DestroyMenu(menu);
-        cmd.0 as usize == ID_QUIT
+        match cmd.0 as usize {
+            ID_QUIT => Some(Choice::Quit),
+            ID_AUTOSTART => Some(Choice::ToggleAutostart),
+            _ => None,
+        }
     }
+}
+
+// --- start with Windows (HKCU Run key) --------------------------------------
+
+const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const RUN_VALUE: &str = "Knoby";
+
+/// The value we register: the quoted path of the running executable.
+fn run_command() -> Option<String> {
+    Some(format!("\"{}\"", std::env::current_exe().ok()?.display()))
+}
+
+fn run_value(name: &str) -> Option<String> {
+    unsafe {
+        let mut key = HKEY::default();
+        let key_name = wide(RUN_KEY);
+        if RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(key_name.as_ptr()), None, KEY_QUERY_VALUE, &mut key).is_err() {
+            return None;
+        }
+        let name = wide(name);
+        let mut buf = vec![0u16; 1024];
+        let mut len = (buf.len() * 2) as u32;
+        let res = RegQueryValueExW(key, PCWSTR(name.as_ptr()), None, None, Some(buf.as_mut_ptr() as *mut u8), Some(&mut len));
+        let _ = RegCloseKey(key);
+        if res.is_err() {
+            return None;
+        }
+        let n = (len as usize / 2).min(buf.len());
+        Some(String::from_utf16_lossy(&buf[..n]).trim_end_matches('\0').to_owned())
+    }
+}
+
+fn set_run_value(name: &str, command: Option<&str>) -> bool {
+    unsafe {
+        let mut key = HKEY::default();
+        let key_name = wide(RUN_KEY);
+        if RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(key_name.as_ptr()), None, KEY_SET_VALUE, &mut key).is_err() {
+            return false;
+        }
+        let name = wide(name);
+        let ok = match command {
+            Some(cmd) => {
+                let data: Vec<u8> = wide(cmd).iter().flat_map(|c| c.to_le_bytes()).collect();
+                RegSetValueExW(key, PCWSTR(name.as_ptr()), None, REG_SZ, Some(&data)).is_ok()
+            }
+            None => RegDeleteValueW(key, PCWSTR(name.as_ptr())).is_ok(),
+        };
+        let _ = RegCloseKey(key);
+        ok
+    }
+}
+
+/// True when the Run entry exists and points at this very executable.
+pub fn autostart_enabled() -> bool {
+    run_value(RUN_VALUE).is_some_and(|v| Some(v) == run_command())
+}
+
+pub fn set_autostart(on: bool) {
+    let cmd = run_command();
+    set_run_value(RUN_VALUE, if on { cmd.as_deref() } else { None });
 }

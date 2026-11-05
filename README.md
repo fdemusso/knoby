@@ -38,7 +38,8 @@ cargo build --release
 ```
 
 The release binary (`target/release/knoby.exe`, ~650 KB) runs without a console window. Knoby lives in
-the notification area: right-click its icon for the status and **Quit**. Only one instance runs at a time.
+the notification area: right-click its icon for the status, **Start with Windows** (a per-user entry in
+`HKCU\...\Run`, pointing at the exe you ran it from) and **Quit**. Only one instance runs at a time.
 Debug builds (`cargo run`) keep the console for logging.
 
 ## Wave Link API notes

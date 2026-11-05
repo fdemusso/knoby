@@ -335,11 +335,15 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                     let idx = active_index(&a.active, &g.channels);
                     format!("Active channel: {}", g.channels.get(idx).map_or("-", |c| c.name.as_str()))
                 });
-                if tray::show_menu(hwnd, &status) {
-                    tray::remove(hwnd);
-                    unsafe {
-                        PostQuitMessage(0);
+                match tray::show_menu(hwnd, &status) {
+                    Some(tray::Choice::Quit) => {
+                        tray::remove(hwnd);
+                        unsafe {
+                            PostQuitMessage(0);
+                        }
                     }
+                    Some(tray::Choice::ToggleAutostart) => tray::set_autostart(!tray::autostart_enabled()),
+                    None => {}
                 }
             }
             LRESULT(0)
