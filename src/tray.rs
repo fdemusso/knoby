@@ -161,7 +161,19 @@ fn set_run_value(name: &str, command: Option<&str>) -> bool {
     unsafe {
         let mut key = HKEY::default();
         let key_name = wide(RUN_KEY);
-        if RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(key_name.as_ptr()), None, KEY_SET_VALUE, &mut key).is_err() {
+        // Create-or-open: the Run key can be missing on a fresh user profile.
+        let opened = RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(key_name.as_ptr()),
+            None,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            None,
+        );
+        if opened.is_err() {
             return false;
         }
         let name = wide(name);
