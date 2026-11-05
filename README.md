@@ -6,7 +6,9 @@ A tiny Windows tray app (Rust, ~650 KB, no installer) that turns a rotary encode
 into a per-channel volume knob for [Elgato Wave Link](https://www.elgato.com/wave-link): turn for volume,
 click to mute, double-click to pick which channel you are controlling.
 
-![Knoby channel picker overlay](docs/overlay.png)
+<p align="center">
+  <img src="docs/overlay.png" alt="Knoby channel picker overlay" width="354">
+</p>
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Platform: Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4)
@@ -53,12 +55,7 @@ The executable is not code-signed, so Windows SmartScreen may warn the first tim
 
 ## How it works
 
-```
- knob (F13/F14/F15) ──► low-level keyboard hook ──► state machine ──► overlay + tray
-                                                        │
-                                                        ▼ setChannel / channelChanged
-                                              Wave Link local WebSocket (JSON-RPC)
-```
+![How Knoby works: knob keys go through a keyboard hook and a state machine to Wave Link, which controls the audio channels](docs/how-it-works.svg)
 
 - A global **low-level keyboard hook** (`WH_KEYBOARD_LL`) intercepts the three knob keys, so the system
   volume never moves.

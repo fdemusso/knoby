@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1110 312" width="1110" height="312" role="img" aria-labelledby="t d" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <title id="t">How Knoby works</title>
+  <desc id="d">The keyboard knob sends F13, F14 and F15 to Knoby. Knoby's keyboard hook feeds a state machine that drives the overlay and talks to Elgato Wave Link over a local WebSocket, which controls the audio channels.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8C93A6"/></marker>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="1109" height="311" rx="16" fill="#14161B" stroke="#2B2E38"/>
+
+  <!-- 1. Keyboard knob -->
+  <rect x="32" y="96" width="170" height="140" rx="12" fill="#1C1F26" stroke="#2B2E38"/>
+  <rect x="85" y="112" width="64" height="64" rx="16" fill="#6D7CFF"/>
+  <circle cx="117" cy="144" r="21" fill="#F5F6FA"/>
+  <rect x="114.5" y="127" width="5" height="17" rx="2.5" fill="#2B2F55"/>
+  <text x="117" y="204" text-anchor="middle" font-size="14" font-weight="600" fill="#ECEEF4">Keyboard knob</text>
+  <text x="117" y="223" text-anchor="middle" font-size="12" fill="#8C93A6">QMK / VIA</text>
+
+  <!-- knob -> Knoby -->
+  <line x1="206" y1="166" x2="288" y2="166" stroke="#8C93A6" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="247" y="152" text-anchor="middle" font-size="11" fill="#8C93A6">turn: F14 / F15</text>
+  <text x="247" y="186" text-anchor="middle" font-size="11" fill="#8C93A6">click: F13</text>
+
+  <!-- 2. Knoby -->
+  <rect x="292" y="40" width="340" height="232" rx="12" fill="#1C1F26" stroke="#6D7CFF" stroke-opacity="0.7"/>
+  <text x="316" y="66" font-size="15" font-weight="700" fill="#8B96FF">Knoby</text>
+  <text x="368" y="66" font-size="11" fill="#8C93A6">tray app · Rust · ~650 KB</text>
+
+  <rect x="316" y="84" width="292" height="44" rx="8" fill="#23262E"/>
+  <text x="332" y="103" font-size="13" font-weight="600" fill="#ECEEF4">Keyboard hook</text>
+  <text x="332" y="119" font-size="11" fill="#8C93A6">WH_KEYBOARD_LL · swallows F13–F15</text>
+
+  <line x1="462" y1="130" x2="462" y2="142" stroke="#8C93A6" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="316" y="144" width="292" height="44" rx="8" fill="#23262E"/>
+  <text x="332" y="163" font-size="13" font-weight="600" fill="#ECEEF4">State machine</text>
+  <text x="332" y="179" font-size="11" fill="#8C93A6">Normal · Selecting (channel picker)</text>
+
+  <line x1="462" y1="190" x2="462" y2="202" stroke="#8C93A6" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="316" y="204" width="292" height="44" rx="8" fill="#23262E"/>
+  <text x="332" y="223" font-size="13" font-weight="600" fill="#ECEEF4">Overlay</text>
+  <text x="332" y="239" font-size="11" fill="#8C93A6">software-rendered layered window</text>
+
+  <!-- Knoby <-> Wave Link -->
+  <line x1="636" y1="156" x2="728" y2="156" stroke="#8C93A6" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="682" y="146" text-anchor="middle" font-size="11" fill="#8C93A6">setChannel</text>
+  <line x1="728" y1="182" x2="636" y2="182" stroke="#8C93A6" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="682" y="202" text-anchor="middle" font-size="11" fill="#8C93A6">channelChanged</text>
+
+  <!-- 3. Wave Link -->
+  <rect x="732" y="96" width="160" height="140" rx="12" fill="#1C1F26" stroke="#2B2E38"/>
+  <text x="812" y="158" text-anchor="middle" font-size="14" font-weight="600" fill="#ECEEF4">Elgato Wave Link</text>
+  <text x="812" y="178" text-anchor="middle" font-size="11" fill="#8C93A6">local WebSocket</text>
+  <text x="812" y="194" text-anchor="middle" font-size="11" fill="#8C93A6">JSON-RPC 2.0</text>
+
+  <line x1="896" y1="166" x2="938" y2="166" stroke="#8C93A6" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 4. Channels -->
+  <rect x="942" y="40" width="136" height="232" rx="12" fill="#1C1F26" stroke="#2B2E38"/>
+  <text x="960" y="64" font-size="13" font-weight="600" fill="#ECEEF4">Channels</text>
+
+  <rect x="960" y="80" width="28" height="28" rx="7" fill="#34BEFE"/>
+  <text x="1000" y="99" font-size="12" fill="#C9CDD8">System</text>
+
+  <rect x="956" y="114" width="36" height="36" rx="9" fill="#FF3C4E" opacity="0.45" filter="url(#glow)"/>
+  <rect x="960" y="118" width="28" height="28" rx="7" fill="#FF3C4E"/>
+  <rect x="956.5" y="114.5" width="35" height="35" rx="9.5" fill="none" stroke="#FF3C4E" stroke-width="2"/>
+  <text x="1000" y="137" font-size="12" font-weight="700" fill="#ECEEF4">Games</text>
+
+  <rect x="960" y="156" width="28" height="28" rx="7" fill="#B260FF"/>
+  <text x="1000" y="175" font-size="12" fill="#C9CDD8">Browser</text>
+
+  <rect x="960" y="194" width="28" height="28" rx="7" fill="#FF60D0"/>
+  <text x="1000" y="213" font-size="12" fill="#C9CDD8">Music</text>
+
+  <rect x="960" y="232" width="28" height="28" rx="7" fill="#FBDB00"/>
+  <text x="1000" y="251" font-size="12" fill="#C9CDD8">Coms</text>
+</svg>
