@@ -4,11 +4,16 @@
 
 use std::time::Instant;
 
-use windows::Win32::Foundation::{COLORREF, HWND, POINT, SIZE};
+use std::ffi::c_void;
+
+use windows::Win32::Foundation::{COLORREF, HWND, POINT, RECT, SIZE};
 use windows::Win32::Graphics::Gdi::*;
-use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, ULW_ALPHA, UpdateLayeredWindow};
+use windows::Win32::UI::WindowsAndMessaging::{
+    SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW, ULW_ALPHA, UpdateLayeredWindow,
+};
 use windows::core::w;
 
+use crate::config::{Config, Corner};
 use crate::wavelink::{Channel, Icon};
 
 const OPEN_MS: f32 = 240.0;
@@ -49,7 +54,7 @@ struct Geo {
 }
 
 impl Geo {
-    fn new(scale: f32, n: usize) -> Self {
+    fn new(scale: f32, n: usize, margin: i32) -> Self {
         let s = |v: f32| v * scale;
         let n = n.max(1) as f32;
         let (pad, tile, gap) = (s(20.0), s(52.0), s(14.0));
@@ -58,7 +63,7 @@ impl Geo {
         let label_gap = s(10.0);
         let w = (2.0 * pad + n * tile + (n - 1.0) * gap).round() as i32;
         let h = (pad_top + tile + label_gap + label_h as f32 + s(12.0)).round() as i32;
-        Geo { pad, pad_top, tile, gap, label_gap, label_h, w, h, margin: s(24.0).round() as i32 }
+        Geo { pad, pad_top, tile, gap, label_gap, label_h, w, h, margin: s(margin as f32).round() as i32 }
     }
 
     fn cell_x(&self, i: usize) -> f32 {
@@ -126,6 +131,7 @@ pub struct Overlay {
     font_name: HFONT,
     font_val: HFONT,
     geo: Geo,
+    corner: Corner,
     canvas: Vec<u8>,
     surface: Option<Surface>,
     /// White-on-black glyph mask used to rasterise text with GDI.
@@ -148,7 +154,8 @@ impl Overlay {
             scale,
             font_name: font(600),
             font_val: font(400),
-            geo: Geo::new(scale, 1),
+            geo: Geo::new(scale, 1, 0),
+            corner: Corner::TopRight,
             canvas: Vec::new(),
             surface: None,
             mask: None,
@@ -173,8 +180,9 @@ impl Overlay {
         }
     }
 
-    pub fn open(&mut self, n: usize, sel: usize) {
-        self.geo = Geo::new(self.scale, n);
+    pub fn open(&mut self, n: usize, sel: usize, cfg: &Config) {
+        self.corner = cfg.overlay_corner;
+        self.geo = Geo::new(self.scale, n, cfg.overlay_margin);
         let (w, h) = (self.geo.w, self.geo.h);
         if self.surface.as_ref().is_none_or(|s| s.w != w || s.h != h) {
             self.surface = Surface::new(w, h);
@@ -244,9 +252,19 @@ impl Overlay {
         let (w, h) = (self.geo.w, self.geo.h);
         let Some(surface) = self.surface.as_mut() else { return };
         surface.bytes().copy_from_slice(&self.canvas);
-        let screen_w = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-        let x = screen_w - w - self.geo.margin + (slide * (w + self.geo.margin) as f32).round() as i32;
-        let pt = POINT { x, y: self.geo.margin };
+        // Work area = screen minus the taskbar, so bottom corners stay visible.
+        let mut area = RECT::default();
+        unsafe {
+            let _ = SystemParametersInfoW(
+                SPI_GETWORKAREA, 0, Some(&mut area as *mut RECT as *mut c_void), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+            );
+        }
+        let m = self.geo.margin;
+        // Slides in from the screen edge nearest to the chosen corner.
+        let travel = ((w + m) as f32 * slide).round() as i32;
+        let x = if self.corner.is_right() { area.right - w - m + travel } else { area.left + m - travel };
+        let y = if self.corner.is_top() { area.top + m } else { area.bottom - h - m };
+        let pt = POINT { x, y };
         let size = SIZE { cx: w, cy: h };
         let src = POINT { x: 0, y: 0 };
         let blend = BLENDFUNCTION {

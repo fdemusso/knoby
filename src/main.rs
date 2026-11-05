@@ -1,6 +1,7 @@
 // Release builds have no console window; debug builds keep it for logging.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod config;
 mod overlay;
 mod tray;
 mod wavelink;
@@ -18,6 +19,7 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
+use config::Config;
 use overlay::Overlay;
 use wavelink::{Channel, Handle};
 
@@ -25,15 +27,7 @@ const WM_WL: u32 = WM_APP + 1;
 const T_CLICK: usize = 1;
 const T_SEL: usize = 2;
 const T_ANIM: usize = 3;
-const CLICK_MS: u32 = 250;
-const SEL_MS: u32 = 4000;
 const FRAME_MS: u32 = 15;
-/// Volume change per knob detent (3%).
-const VOLUME_STEP: f32 = 0.03;
-/// Knob detents needed to move the overlay selection by one icon, and the
-/// minimum time between two selection moves.
-const SEL_DETENTS: i32 = 2;
-const SEL_MIN_MS: u128 = 90;
 
 const VK_VOLUME_MUTE: u32 = 0xAD;
 const VK_VOLUME_DOWN: u32 = 0xAE;
@@ -54,6 +48,7 @@ struct App {
     hwnd: HWND,
     wl: Handle,
     overlay: Overlay,
+    cfg: Config,
     active: Option<String>,
     /// Some(index) while the channel picker overlay is open.
     selecting: Option<usize>,
@@ -98,6 +93,16 @@ fn save_active(id: &str) {
         }
         let _ = std::fs::write(p, id);
     }
+}
+
+/// Loads the user config; problems are printed (visible in debug builds) and
+/// the affected settings keep their defaults.
+fn load_config() -> Config {
+    let (cfg, warnings) = config::load();
+    for w in warnings {
+        eprintln!("config: {w}");
+    }
+    cfg
 }
 
 fn debug() -> bool {
@@ -169,7 +174,7 @@ fn adjust(up: bool) {
         let mut g = a.wl.shared.lock().unwrap();
         let idx = active_index(&a.active, &g.channels);
         let ch = &mut g.channels[idx];
-        let d = if up { VOLUME_STEP } else { -VOLUME_STEP };
+        let d = if up { a.cfg.volume_step } else { -a.cfg.volume_step };
         ch.level = ((ch.level + d).clamp(0.0, 1.0) * 10000.0).round() / 10000.0;
         ch.local_set = Some(Instant::now());
         let (id, level) = (ch.id.clone(), ch.level);
@@ -194,7 +199,8 @@ fn toggle_mute() {
 }
 
 fn click_normal() {
-    let (pending, hwnd) = with_app(|a| (std::mem::replace(&mut a.click_pending, false), a.hwnd));
+    let (pending, hwnd, window_ms) =
+        with_app(|a| (std::mem::replace(&mut a.click_pending, false), a.hwnd, a.cfg.double_click_ms));
     if pending {
         unsafe {
             let _ = KillTimer(Some(hwnd), T_CLICK);
@@ -203,7 +209,7 @@ fn click_normal() {
     } else {
         with_app(|a| a.click_pending = true);
         unsafe {
-            SetTimer(Some(hwnd), T_CLICK, CLICK_MS, None);
+            SetTimer(Some(hwnd), T_CLICK, window_ms, None);
         }
     }
 }
@@ -211,30 +217,30 @@ fn click_normal() {
 // --- overlay ---------------------------------------------------------------
 
 fn open_overlay() {
-    let hwnd = with_app(|a| {
+    let (hwnd, timeout_ms) = with_app(|a| {
         let g = a.wl.shared.lock().unwrap();
         let idx = active_index(&a.active, &g.channels);
         let n = g.channels.len();
         a.selecting = Some(idx);
-        a.overlay.open(n, idx);
+        a.overlay.open(n, idx, &a.cfg);
         a.overlay.tick(&g.channels);
-        a.hwnd
+        (a.hwnd, a.cfg.select_timeout_ms)
     });
     unsafe {
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        SetTimer(Some(hwnd), T_SEL, SEL_MS, None);
+        SetTimer(Some(hwnd), T_SEL, timeout_ms, None);
         SetTimer(Some(hwnd), T_ANIM, FRAME_MS, None);
     }
 }
 
 fn move_selection(i: usize, up: bool) {
-    let hwnd = with_app(|a| {
+    let (hwnd, timeout_ms) = with_app(|a| {
         let dir = if up { 1 } else { -1 };
         // A direction change restarts the count; same-direction detents add up.
         a.sel_accum = if a.sel_accum.signum() == -dir { dir } else { a.sel_accum + dir };
-        let throttled = a.last_sel_move.is_some_and(|t| t.elapsed().as_millis() < SEL_MIN_MS);
-        if a.sel_accum.abs() >= SEL_DETENTS && !throttled {
+        let throttled = a.last_sel_move.is_some_and(|t| t.elapsed().as_millis() < a.cfg.select_min_ms);
+        if a.sel_accum.abs() >= a.cfg.select_detents && !throttled {
             a.sel_accum = 0;
             a.last_sel_move = Some(Instant::now());
             let n = a.wl.shared.lock().unwrap().channels.len();
@@ -242,10 +248,10 @@ fn move_selection(i: usize, up: bool) {
             a.selecting = Some(next);
             a.overlay.set_selection(next);
         }
-        a.hwnd
+        (a.hwnd, a.cfg.select_timeout_ms)
     });
     unsafe {
-        SetTimer(Some(hwnd), T_SEL, SEL_MS, None);
+        SetTimer(Some(hwnd), T_SEL, timeout_ms, None);
     }
 }
 
@@ -343,6 +349,18 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                         }
                     }
                     Some(tray::Choice::ToggleAutostart) => tray::set_autostart(!tray::autostart_enabled()),
+                    Some(tray::Choice::OpenConfig) => {
+                        // Make sure the file exists (first run creates it), then open it.
+                        let cfg = load_config();
+                        with_app(|a| a.cfg = cfg);
+                        if let Some(p) = config::path() {
+                            tray::open_in_notepad(&p);
+                        }
+                    }
+                    Some(tray::Choice::ReloadConfig) => {
+                        let cfg = load_config();
+                        with_app(|a| a.cfg = cfg);
+                    }
                     None => {}
                 }
             }
@@ -397,6 +415,7 @@ fn main() -> windows::core::Result<()> {
                 hwnd,
                 wl,
                 overlay: Overlay::new(hwnd, scale),
+                cfg: load_config(),
                 active: load_active(),
                 selecting: None,
                 click_pending: false,

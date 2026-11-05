@@ -20,7 +20,11 @@ Due stati:
 
 **Fisso, 3% (0.03) per scatto** (`VOLUME_STEP`). Un'accelerazione basata sulla velocità di rotazione (1% → 5%) è stata provata e scartata perché dava fastidio nell'uso reale; il codice è nella cronologia git (modulo `accel.rs`).
 
-In modalità overlay servono 2 scatti per spostare la selezione di un'icona, con almeno 90 ms tra due spostamenti (`SEL_DETENTS`, `SEL_MIN_MS`).
+In modalità overlay servono 2 scatti per spostare la selezione di un'icona, con almeno 90 ms tra due spostamenti.
+
+## Configurazione
+
+Tutte le costanti di comportamento (step, scatti per icona, finestra del doppio click, timeout dell'overlay, angolo e margine) stanno in `%APPDATA%\Knoby\config.toml`, creato con i default alla prima esecuzione. Voci del menu tray: «Open config file» e «Reload config». Formato: sottoinsieme di TOML (`chiave = valore`, commenti `#`), con parser scritto a mano per non aggiungere dipendenze; i valori non validi tornano al default e vengono segnalati su stderr. Elenco e intervalli: vedi README.
 
 ## Overlay
 

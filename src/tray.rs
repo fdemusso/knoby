@@ -7,7 +7,7 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::Registry::*;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::PCWSTR;
+use windows::core::{PCWSTR, w};
 
 use crate::overlay::sd_round_rect;
 
@@ -15,6 +15,8 @@ pub const WM_TRAY: u32 = WM_APP + 2;
 const TRAY_ID: u32 = 1;
 const ID_QUIT: usize = 1;
 const ID_AUTOSTART: usize = 2;
+const ID_OPEN_CONFIG: usize = 3;
+const ID_RELOAD_CONFIG: usize = 4;
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
@@ -154,7 +156,17 @@ pub fn remove(hwnd: HWND) {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Choice {
     ToggleAutostart,
+    OpenConfig,
+    ReloadConfig,
     Quit,
+}
+
+/// Opens a file in Notepad (always present, unlike a `.toml` association).
+pub fn open_in_notepad(path: &std::path::Path) {
+    let file = wide(&format!("\"{}\"", path.display()));
+    unsafe {
+        ShellExecuteW(None, w!("open"), w!("notepad.exe"), PCWSTR(file.as_ptr()), PCWSTR::null(), SW_SHOWNORMAL);
+    }
 }
 
 /// Shows the context menu at the cursor and returns the chosen item, if any.
@@ -165,12 +177,17 @@ pub fn show_menu(hwnd: HWND, status: &str) -> Option<Choice> {
         let title = wide("Knoby");
         let status = wide(status);
         let autostart = wide("Start with Windows");
+        let open_cfg = wide("Open config file");
+        let reload_cfg = wide("Reload config");
         let quit = wide("Quit");
         let checked = if autostart_enabled() { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, PCWSTR(title.as_ptr()));
         let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, PCWSTR(status.as_ptr()));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING | checked, ID_AUTOSTART, PCWSTR(autostart.as_ptr()));
+        let _ = AppendMenuW(menu, MF_STRING, ID_OPEN_CONFIG, PCWSTR(open_cfg.as_ptr()));
+        let _ = AppendMenuW(menu, MF_STRING, ID_RELOAD_CONFIG, PCWSTR(reload_cfg.as_ptr()));
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, PCWSTR(quit.as_ptr()));
 
         let mut pt = POINT::default();
@@ -183,6 +200,8 @@ pub fn show_menu(hwnd: HWND, status: &str) -> Option<Choice> {
         match cmd.0 as usize {
             ID_QUIT => Some(Choice::Quit),
             ID_AUTOSTART => Some(Choice::ToggleAutostart),
+            ID_OPEN_CONFIG => Some(Choice::OpenConfig),
+            ID_RELOAD_CONFIG => Some(Choice::ReloadConfig),
             _ => None,
         }
     }
