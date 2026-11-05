@@ -16,7 +16,7 @@ the *channel* you are actually listening to.
 - **Normal mode**: knob rotation changes the volume of the active channel, a single click toggles its mute.
 - **Double click**: opens a small rectangular overlay in the top-right corner of the screen showing the
   icons of your Wave Link channels. Rotate to move left/right, single click to confirm.
-- Rotation is velocity-sensitive: slow turns move 1% per detent, fast turns up to 5%.
+- Each knob detent changes the volume by a fixed 3% (`VOLUME_STEP` in `src/main.rs`).
 
 Channels, names, icons, volume and mute state all come from Wave Link's local WebSocket API, so any
 software channel you create in Wave Link shows up automatically.

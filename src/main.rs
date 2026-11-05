@@ -1,4 +1,3 @@
-mod accel;
 mod overlay;
 mod wavelink;
 
@@ -14,7 +13,6 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
-use accel::Accel;
 use overlay::Overlay;
 use wavelink::{Channel, Handle};
 
@@ -25,6 +23,8 @@ const T_ANIM: usize = 3;
 const CLICK_MS: u32 = 250;
 const SEL_MS: u32 = 4000;
 const FRAME_MS: u32 = 15;
+/// Volume change per knob detent (3%).
+const VOLUME_STEP: f32 = 0.03;
 /// Knob detents needed to move the overlay selection by one icon, and the
 /// minimum time between two selection moves.
 const SEL_DETENTS: i32 = 2;
@@ -49,7 +49,6 @@ struct App {
     hwnd: HWND,
     wl: Handle,
     overlay: Overlay,
-    accel: Accel,
     active: Option<String>,
     /// Some(index) while the channel picker overlay is open.
     selecting: Option<usize>,
@@ -162,11 +161,10 @@ fn handle_key(key: Key) {
 
 fn adjust(up: bool) {
     with_app(|a| {
-        let step = a.accel.step(Instant::now());
         let mut g = a.wl.shared.lock().unwrap();
         let idx = active_index(&a.active, &g.channels);
         let ch = &mut g.channels[idx];
-        let d = if up { step } else { -step };
+        let d = if up { VOLUME_STEP } else { -VOLUME_STEP };
         ch.level = ((ch.level + d).clamp(0.0, 1.0) * 10000.0).round() / 10000.0;
         ch.local_set = Some(Instant::now());
         let (id, level) = (ch.id.clone(), ch.level);
@@ -356,7 +354,6 @@ fn main() -> windows::core::Result<()> {
                 hwnd,
                 wl,
                 overlay: Overlay::new(hwnd, scale),
-                accel: Accel::default(),
                 active: load_active(),
                 selecting: None,
                 click_pending: false,
