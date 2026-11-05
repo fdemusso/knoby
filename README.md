@@ -1,6 +1,10 @@
-# Knoby
+<p align="center">
+  <img src="assets/icon-256.png" alt="Knoby icon" width="96">
+</p>
 
-**Control Elgato Wave Link channel volume with your keyboard's volume knob.**
+<h1 align="center">Knoby</h1>
+
+<p align="center"><b>Control Elgato Wave Link channel volume with your keyboard's volume knob.</b></p>
 
 A tiny Windows tray app (Rust, ~650 KB, no installer) that turns a rotary encoder on a QMK / VIA keyboard
 into a per-channel volume knob for [Elgato Wave Link](https://www.elgato.com/wave-link): turn for volume,
