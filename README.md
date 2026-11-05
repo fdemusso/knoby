@@ -10,9 +10,11 @@ click to mute, double-click to pick which channel you are controlling.
   <img src="docs/overlay.png" alt="Knoby channel picker overlay" width="354">
 </p>
 
-![License: MIT](https://img.shields.io/badge/license-MIT-blue)
-![Platform: Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4)
-![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584)
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT">
+  <img src="https://img.shields.io/badge/platform-Windows%2011-0078d4" alt="Platform: Windows 11">
+  <img src="https://img.shields.io/badge/built%20with-Rust-dea584" alt="Built with Rust">
+</p>
 
 ## Why
 
@@ -112,10 +114,9 @@ key presses drive Knoby (used for automated testing).
 Elgato Wave Link, volume knob, rotary encoder, QMK, VIA, custom keyboard, Stream Deck, per-app volume
 control, audio mixer, Windows tray utility, Win32, low-level keyboard hook, Rust.
 
-## Disclaimer
-
-Knoby is an independent project and is not affiliated with or endorsed by Elgato or Corsair. Wave Link and
-Stream Deck are trademarks of their respective owners.
+> [!IMPORTANT]
+> **Disclaimer:** Knoby is an independent project and is not affiliated with or endorsed by Elgato or
+> Corsair. Wave Link and Stream Deck are trademarks of their respective owners.
 
 ## License
 
