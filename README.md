@@ -42,7 +42,7 @@ listening to: music, game, browser or voice chat. Knoby makes that happen.
 
 ## Quick start
 
-1. Install [Elgato Wave Link 3](https://www.elgato.com/wave-link) and create the channels you want.
+1. Install [Elgato Wave Link 3](https://www.elgato.com/it/it/s/wave-link-app) and create the channels you want.
 2. In [VIA](https://www.caniusevia.com/) (or QMK), map the knob to unused keys:
 
    | Knob | Key |
