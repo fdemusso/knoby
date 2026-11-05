@@ -1,51 +1,80 @@
 # Knoby
 
-A tiny Windows utility that makes a keyboard volume knob control the volume of an
-[Elgato Wave Link](https://www.elgato.com/wave-link) channel instead of the system master volume.
+**Control Elgato Wave Link channel volume with your keyboard's volume knob.**
 
-Status: early design / prototype. See [SPEC.md](SPEC.md) for the full design.
+A tiny Windows tray app (Rust, ~650 KB, no installer) that turns a rotary encoder on a QMK / VIA keyboard
+into a per-channel volume knob for [Elgato Wave Link](https://www.elgato.com/wave-link): turn for volume,
+click to mute, double-click to pick which channel you are controlling.
 
-## The problem
+![Knoby channel picker overlay](docs/overlay.png)
 
-A custom keyboard (VIA/QMK) knob sends the standard media keys, so it only moves the Windows
-master volume. With Wave Link and a Stream Deck handling per-app volume, you want the knob to drive
-the *channel* you are actually listening to.
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+![Platform: Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4)
+![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584)
+
+## Why
+
+A keyboard volume knob sends the standard media keys, so it only moves the **Windows master volume**. If you
+mix with Wave Link (and maybe a Stream Deck) you want the knob to drive the *channel* you are actually
+listening to: music, game, browser or voice chat. Knoby makes that happen.
+
+## Features
+
+- **Per-channel volume** on any Wave Link software channel: turn for volume, click to mute / unmute.
+- **Channel picker**: double-click the knob, turn to move between your channel icons, click to confirm.
+  An unobtrusive overlay slides in at a screen corner and never steals focus, so it is safe to use
+  mid-game.
+- **Always in sync**: stays consistent with Wave Link and Stream Deck, with no polling.
+- **Your channels, your icons**: names, colours and icons come straight from Wave Link, and new channels
+  show up automatically.
+- **Tiny and quiet**: ~650 KB, ~13 MB of RAM, about 0.3% of one core when idle.
+- **Tray icon** with status, *Start with Windows*, *Open config file*, *Reload config* and *Quit*.
+- **Configurable**: volume step, picker speed, double-click timing, overlay corner and margin.
+
+## Quick start
+
+1. Install [Elgato Wave Link 3](https://www.elgato.com/wave-link) and create the channels you want.
+2. In [VIA](https://www.caniusevia.com/) (or QMK), map the knob to unused keys:
+
+   | Knob | Key |
+   |---|---|
+   | counter-clockwise | `F14` |
+   | clockwise | `F15` |
+   | click | `F13` |
+
+3. Download `knoby.exe` (or the `.zip`) from the [latest release](../../releases/latest) and run it.
+   There is no window: look for the knob icon in the notification area.
+4. Turn the knob. Double-click to open the channel picker.
+
+> **Tip:** use the tray menu to enable *Start with Windows*. Move `knoby.exe` to a permanent folder first:
+> the startup entry points at the file you ran.
+
+The executable is not code-signed, so Windows SmartScreen may warn the first time you run a downloaded copy.
 
 ## How it works
 
-- **Normal mode**: knob rotation changes the volume of the active channel, a single click toggles its mute.
-- **Double click**: opens a small rectangular overlay in the top-right corner of the screen showing the
-  icons of your Wave Link channels. Rotate to move left/right, single click to confirm.
-- Each knob detent changes the volume by a fixed step (3% by default).
-
-Channels, names, icons, volume and mute state all come from Wave Link's local WebSocket API, so any
-software channel you create in Wave Link shows up automatically.
-
-## Requirements
-
-- Windows 11
-- Elgato Wave Link 3.x (developed against 3.4.0, build 4650)
-- A knob remapped in VIA to unused keys: counter-clockwise → `F14`, clockwise → `F15`, click → `F13`.
-  (Knoby also accepts `VOLUME_UP` / `VOLUME_DOWN` / `VOLUME_MUTE`, but on the author's keyboard the
-  media-key rotation never reached the keyboard hook, so dedicated F-keys are the supported setup.)
-
-Set `KNOBY_DEBUG=1` to log every intercepted key to stderr.
-
-## Build and run
-
 ```
-cargo build --release
+ knob (F13/F14/F15) ──► low-level keyboard hook ──► state machine ──► overlay + tray
+                                                        │
+                                                        ▼ setChannel / channelChanged
+                                              Wave Link local WebSocket (JSON-RPC)
 ```
 
-The release binary (`target/release/knoby.exe`, ~650 KB) runs without a console window. Knoby lives in
-the notification area: right-click its icon for the status, **Start with Windows** (a per-user entry in
-`HKCU\...\Run`, pointing at the exe you ran it from) and **Quit**. Only one instance runs at a time.
-Debug builds (`cargo run`) keep the console for logging.
+- A global **low-level keyboard hook** (`WH_KEYBOARD_LL`) intercepts the three knob keys, so the system
+  volume never moves.
+- Wave Link is controlled through the **local JSON-RPC WebSocket** it exposes: Knoby reads the channel list
+  (names, levels, icons) and writes `level` / `isMuted`. It follows `channelChanged` notifications to stay in
+  sync with any other controller.
+- The overlay is a **software-rendered layered window** (per-pixel alpha, anti-aliased, animated) with no GPU
+  or UI framework, which keeps the binary tiny. The selection ring takes the colour of the selected icon.
+
+Deeper dive, including the verified Wave Link protocol notes and the decisions made along the way, in
+[docs/DESIGN.md](docs/DESIGN.md).
 
 ## Configuration
 
-Settings live in `%APPDATA%\Knoby\config.toml`, created with commented defaults on first run. Use the
-tray menu: **Open config file** to edit it, **Reload config** to apply changes without restarting.
+Settings live in `%APPDATA%\Knoby\config.toml`, created with commented defaults on first run. Use the tray
+menu: **Open config file** to edit it, **Reload config** to apply changes without restarting.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -59,12 +88,37 @@ tray menu: **Open config file** to edit it, **Reload config** to apply changes w
 
 Invalid values are ignored (the default is used) and reported on stderr in debug builds.
 
-## Wave Link API notes
+## Build from source
 
-Wave Link exposes a JSON-RPC 2.0 WebSocket on `127.0.0.1`. The port is written to
-`%LOCALAPPDATA%\Packages\Elgato.WaveLink_g54w8ztgkx496\LocalState\ws-info.json` and changes on every
-launch. No authentication is needed, only an `Origin: streamdeck://` header. The details Knoby relies on
-(`getChannels`, `setChannel`, `channelChanged` notifications) are documented in [SPEC.md](SPEC.md).
+Requires a recent stable [Rust](https://rustup.rs/) toolchain (MSVC) on Windows.
+
+```
+cargo build --release     # target\release\knoby.exe, no console window
+cargo run                 # debug build: keeps the console for logging
+cargo test
+```
+
+Developer switches (environment variables): `KNOBY_DEBUG=1` logs every intercepted key,
+`KNOBY_PREVIEW=<file.png>` opens the overlay and saves one frame, `KNOBY_ACCEPT_INJECTED=1` lets scripted
+key presses drive Knoby (used for automated testing).
+
+## Compatibility and limitations
+
+- Windows 11 and Elgato Wave Link **3.x** (developed against 3.4.0). Wave Link 2 uses a different protocol.
+- The Wave Link WebSocket protocol is not covered by a public stability guarantee, so a future Wave Link
+  update could require changes.
+- The overlay is a topmost, non-activating window: it is designed to show over windowed and borderless games,
+  but exclusive fullscreen is not guaranteed.
+
+## Related topics
+
+Elgato Wave Link, volume knob, rotary encoder, QMK, VIA, custom keyboard, Stream Deck, per-app volume
+control, audio mixer, Windows tray utility, Win32, low-level keyboard hook, Rust.
+
+## Disclaimer
+
+Knoby is an independent project and is not affiliated with or endorsed by Elgato or Corsair. Wave Link and
+Stream Deck are trademarks of their respective owners.
 
 ## License
 
