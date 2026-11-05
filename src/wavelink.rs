@@ -19,6 +19,8 @@ pub struct Icon {
     pub w: i32,
     pub h: i32,
     pub bgra: Vec<u8>,
+    /// Dominant colour (RGB), sampled from the icon's opaque edge.
+    pub accent: [u8; 3],
 }
 
 pub struct Channel {
@@ -192,5 +194,8 @@ fn decode_icon(b64: &str) -> Option<Icon> {
         let pm = |c: u8| ((c as u32 * a + 127) / 255) as u8;
         bgra.extend_from_slice(&[pm(px[2]), pm(px[1]), pm(px[0]), px[3]]);
     }
-    Some(Icon { w: info.width as i32, h: info.height as i32, bgra })
+    let (w, h) = (info.width as usize, info.height as usize);
+    let at = ((3.min(h - 1)) * w + w / 2) * 4;
+    let accent = [bgra[at + 2], bgra[at + 1], bgra[at]];
+    Some(Icon { w: w as i32, h: h as i32, bgra, accent })
 }
