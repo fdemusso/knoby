@@ -11,6 +11,7 @@ click to mute, double-click to pick which channel you are controlling.
 </p>
 
 <p align="center">
+  <a href="https://github.com/fdemusso/knoby/actions/workflows/ci.yml"><img src="https://github.com/fdemusso/knoby/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT">
   <img src="https://img.shields.io/badge/platform-Windows%2011-0078d4" alt="Platform: Windows 11">
   <img src="https://img.shields.io/badge/built%20with-Rust-dea584" alt="Built with Rust">

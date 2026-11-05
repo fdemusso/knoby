@@ -174,7 +174,7 @@ impl Overlay {
         let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
-        let rgba: Vec<u8> = self.canvas.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+        let rgba: Vec<u8> = self.canvas.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
         if let Ok(mut wr) = enc.write_header() {
             let _ = wr.write_image_data(&rgba);
         }
@@ -236,10 +236,11 @@ impl Overlay {
         };
 
         self.render(channels, &an, t);
-        if t > 900.0 && an.closing.is_none() {
-            if let Some(p) = self.dump_path.take() {
-                self.dump(&p);
-            }
+        if t > 900.0
+            && an.closing.is_none()
+            && let Some(p) = self.dump_path.take()
+        {
+            self.dump(&p);
         }
         self.present(slide, alpha);
         if !finished {

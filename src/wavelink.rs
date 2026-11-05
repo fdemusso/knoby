@@ -194,7 +194,7 @@ fn decode_icon(b64: &str) -> Option<Icon> {
         return None;
     }
     let mut bgra = Vec::with_capacity(info.buffer_size());
-    for px in buf[..info.buffer_size()].chunks_exact(4) {
+    for px in buf[..info.buffer_size()].as_chunks::<4>().0 {
         let a = px[3] as u32;
         let pm = |c: u8| ((c as u32 * a + 127) / 255) as u8;
         bgra.extend_from_slice(&[pm(px[2]), pm(px[1]), pm(px[0]), px[3]]);
@@ -203,4 +203,69 @@ fn decode_icon(b64: &str) -> Option<Icon> {
     let at = ((3.min(h - 1)) * w + w / 2) * 4;
     let accent = [bgra[at + 2], bgra[at + 1], bgra[at]];
     Some(Icon { w: w as i32, h: h as i32, bgra, accent })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Encodes a 4x4 RGBA PNG (opaque orange, except a half-transparent red top-left pixel) as base64.
+    fn sample_png_b64() -> String {
+        let mut rgba = Vec::new();
+        for i in 0..16 {
+            rgba.extend(if i == 0 { [255, 0, 0, 128] } else { [200, 100, 50, 255] });
+        }
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, 4, 4);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&rgba).unwrap();
+        base64::engine::general_purpose::STANDARD.encode(out)
+    }
+
+    #[test]
+    fn decode_icon_premultiplies_to_bgra_and_picks_the_accent() {
+        let icon = decode_icon(&sample_png_b64()).expect("valid PNG");
+        assert_eq!((icon.w, icon.h), (4, 4));
+        // Half-transparent red becomes premultiplied BGRA: b=0, g=0, r=128, a=128.
+        assert_eq!(&icon.bgra[0..4], &[0, 0, 128, 128]);
+        // Opaque orange (200,100,50) is stored as B,G,R,A.
+        assert_eq!(&icon.bgra[4..8], &[50, 100, 200, 255]);
+        assert_eq!(icon.accent, [200, 100, 50]);
+    }
+
+    #[test]
+    fn decode_icon_rejects_garbage() {
+        assert!(decode_icon("not base64 at all!").is_none());
+        assert!(decode_icon("aGVsbG8=").is_none()); // valid base64, not a PNG
+    }
+
+    #[test]
+    fn channelchanged_updates_cache_but_ignores_recent_local_level_echoes() {
+        let shared = Mutex::new(Shared {
+            connected: true,
+            channels: vec![Channel {
+                id: "A".into(),
+                name: "Music".into(),
+                level: 0.5,
+                muted: false,
+                icon: None,
+                local_set: None,
+            }],
+        });
+        let note = |body: &str| format!(r#"{{"method":"channelChanged","params":{{"id":"A",{body}}}}}"#);
+
+        // External change: accepted.
+        assert!(handle_message(&shared, &note(r#""level":0.7"#)));
+        assert_eq!(shared.lock().unwrap().channels[0].level, 0.7);
+
+        // Right after our own write, a (late) level echo must not overwrite the cache...
+        shared.lock().unwrap().channels[0].local_set = Some(Instant::now());
+        handle_message(&shared, &note(r#""level":0.1"#));
+        assert_eq!(shared.lock().unwrap().channels[0].level, 0.7);
+
+        // ...but mute changes are always applied.
+        handle_message(&shared, &note(r#""isMuted":true"#));
+        assert!(shared.lock().unwrap().channels[0].muted);
+    }
 }
