@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 640" width="1280" height="640" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <!-- Source for assets/social-preview.png (GitHub repository social preview, 1280x640),
+       rendered with headless Edge at a 1280x640 window. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#181B22"/>
+      <stop offset="1" stop-color="#10121A"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6D7CFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#6D7CFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="250" cy="320" r="300" fill="url(#halo)"/>
+  <image href="icon-512.png" xlink:href="icon-512.png" x="110" y="180" width="280" height="280"/>
+
+  <text x="470" y="300" font-size="132" font-weight="700" fill="#ECEEF4">Knoby</text>
+  <text x="474" y="364" font-size="34" fill="#9AA1B5">Per-channel volume knob for Elgato Wave Link</text>
+
+  <!-- the channel picker, as a nod to the overlay -->
+  <g transform="translate(474 410)">
+    <rect x="0" y="0" width="64" height="64" rx="15" fill="#34BEFE" opacity="0.55"/>
+    <rect x="-2" y="-2" width="84" height="84" rx="20" fill="#FF3C4E" opacity="0.5" filter="url(#glow)" transform="translate(82 0)"/>
+    <rect x="82" y="0" width="64" height="64" rx="15" fill="#FF3C4E"/>
+    <rect x="76" y="-6" width="76" height="76" rx="19" fill="none" stroke="#FF3C4E" stroke-width="3"/>
+    <rect x="164" y="0" width="64" height="64" rx="15" fill="#B260FF" opacity="0.55"/>
+    <rect x="246" y="0" width="64" height="64" rx="15" fill="#FF60D0" opacity="0.55"/>
+    <rect x="328" y="0" width="64" height="64" rx="15" fill="#FBDB00" opacity="0.55"/>
+  </g>
+
+  <text x="474" y="560" font-size="26" fill="#6F768A">Rust · tiny Windows tray app · QMK / VIA rotary encoder</text>
+</svg>

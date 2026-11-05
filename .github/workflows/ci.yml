@@ -18,7 +18,7 @@ jobs:
     # Knoby is Windows-only (Win32 APIs, registry), so it is built and tested on Windows.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal --component clippy
