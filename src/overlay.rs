@@ -66,18 +66,42 @@ impl Geo {
         Geo { pad, pad_top, tile, gap, label_gap, label_h, w, h, margin: s(margin as f32).round() as i32 }
     }
 
+    /// The volume bar: one icon with the name, level and a progress bar beside it.
+    fn volume(scale: f32, margin: i32) -> Self {
+        let s = |v: f32| v * scale;
+        let (pad, tile, gap) = (s(20.0), s(52.0), s(14.0));
+        let pad_top = s(16.0);
+        let w = (2.0 * pad + tile + gap + s(190.0)).round() as i32;
+        let h = (2.0 * pad_top + tile).round() as i32;
+        Geo {
+            pad, pad_top, tile, gap, label_gap: s(10.0), label_h: s(24.0).round() as i32, w, h,
+            margin: s(margin as f32).round() as i32,
+        }
+    }
+
     fn cell_x(&self, i: usize) -> f32 {
         self.pad + i as f32 * (self.tile + self.gap)
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    /// The channel picker.
+    Picker,
+    /// The volume bar shown while turning the knob or muting.
+    Volume,
+}
+
 struct Anim {
+    mode: Mode,
     start: Instant,
     closing: Option<Instant>,
     last: Instant,
     sel: usize,
     ring_x: f32,
     amt: Vec<f32>,
+    /// Animated level of the volume bar, following the channel's level.
+    shown: f32,
 }
 
 struct Surface {
@@ -180,21 +204,53 @@ impl Overlay {
         }
     }
 
-    pub fn open(&mut self, n: usize, sel: usize, cfg: &Config) {
+    fn prepare(&mut self, geo: Geo, cfg: &Config) {
         self.corner = cfg.overlay_corner;
-        self.geo = Geo::new(self.scale, n, cfg.overlay_margin);
+        self.geo = geo;
         let (w, h) = (self.geo.w, self.geo.h);
         if self.surface.as_ref().is_none_or(|s| s.w != w || s.h != h) {
             self.surface = Surface::new(w, h);
             self.mask = Surface::new(w, self.geo.label_h);
         }
         self.canvas = vec![0; (w * h * 4) as usize];
+    }
+
+    pub fn open(&mut self, n: usize, sel: usize, cfg: &Config) {
+        self.prepare(Geo::new(self.scale, n, cfg.overlay_margin), cfg);
         let now = Instant::now();
         let mut amt = vec![0.0; n];
         if let Some(a) = amt.get_mut(sel) {
             *a = 1.0;
         }
-        self.anim = Some(Anim { start: now, closing: None, last: now, sel, ring_x: self.geo.cell_x(sel), amt });
+        self.anim = Some(Anim {
+            mode: Mode::Picker, start: now, closing: None, last: now, sel,
+            ring_x: self.geo.cell_x(sel), amt, shown: 0.0,
+        });
+    }
+
+    /// Shows the volume bar for channel `sel`, whose level was `from` before the
+    /// change, or refreshes it if it is already up. Returns true when the window
+    /// was not showing the bar and has to be shown.
+    pub fn show_volume(&mut self, sel: usize, from: f32, cfg: &Config) -> bool {
+        let now = Instant::now();
+        if let Some(a) = self.anim.as_mut()
+            && a.mode == Mode::Volume
+        {
+            a.sel = sel;
+            // Turned again while sliding out: slide back in from where it is.
+            if let Some(c) = a.closing.take() {
+                let p = clamp01(now.duration_since(c).as_secs_f32() * 1000.0 / CLOSE_MS);
+                let back = std::time::Duration::from_secs_f32((1.0 - ease_in(p).cbrt()) * OPEN_MS / 1000.0);
+                a.start = now.checked_sub(back).unwrap_or(now);
+            }
+            return false;
+        }
+        self.prepare(Geo::volume(self.scale, cfg.overlay_margin), cfg);
+        self.anim = Some(Anim {
+            mode: Mode::Volume, start: now, closing: None, last: now, sel,
+            ring_x: 0.0, amt: Vec::new(), shown: from,
+        });
+        true
     }
 
     pub fn set_selection(&mut self, sel: usize) {
@@ -225,6 +281,7 @@ impl Overlay {
             *a += ((i == an.sel) as u8 as f32 - *a) * k;
         }
         an.ring_x += (self.geo.cell_x(an.sel) - an.ring_x) * k;
+        an.shown += (channels[an.sel].level - an.shown) * k;
 
         let t = now.duration_since(an.start).as_secs_f32() * 1000.0;
         let (slide, alpha, finished) = match an.closing {
@@ -283,11 +340,16 @@ impl Overlay {
     }
 
     fn render(&mut self, channels: &[Channel], an: &Anim, t: f32) {
-        let g = &self.geo;
-        let (w, h) = (g.w, g.h);
-        let n = channels.len();
+        self.fill_panel();
+        match an.mode {
+            Mode::Picker => self.render_picker(channels, an, t),
+            Mode::Volume => self.render_volume(&channels[an.sel], an),
+        }
+    }
 
-        // Panel and 1px border.
+    /// Panel and 1px border.
+    fn fill_panel(&mut self) {
+        let (w, h) = (self.geo.w, self.geo.h);
         for y in 0..h {
             for x in 0..w {
                 let edge = x == 0 || y == 0 || x == w - 1 || y == h - 1;
@@ -296,6 +358,61 @@ impl Overlay {
                 self.canvas[i..i + 4].copy_from_slice(&[c[2] as u8, c[1] as u8, c[0] as u8, 255]);
             }
         }
+    }
+
+    fn render_volume(&mut self, ch: &Channel, an: &Anim) {
+        let g = &self.geo;
+        let (w, h) = (g.w, g.h);
+        let accent = ch.icon.as_ref().map_or(FALLBACK_ACCENT, |i| i.accent.map(f32::from));
+
+        if let Some(icon) = &ch.icon {
+            let a = if ch.muted { 0.55 } else { 1.0 };
+            blit_icon(&mut self.canvas, w, h, icon, g.pad, g.pad_top, g.tile, a);
+        }
+
+        // Name and level on one row, the bar below, the block centred on the icon.
+        let (x0, x1) = ((g.pad + g.tile + g.gap) as i32, (w as f32 - g.pad) as i32);
+        let bar_h = 8.0 * self.scale;
+        let block = g.label_h as f32 + g.label_gap + bar_h;
+        let top = g.pad_top + (g.tile - block) / 2.0;
+        let (text_y, bar_y) = (top as i32, top + g.label_h as f32 + g.label_gap);
+
+        let (val, val_color, fill_color) = if ch.muted {
+            ("MUTED".to_owned(), RED, MUTED)
+        } else {
+            (format!("{}%", (an.shown * 100.0).round()), MUTED, accent)
+        };
+        let (name_w, val_w) = (wide(&ch.name), wide(&val));
+        let vw = self.text_width(self.font_val, &val_w);
+        let gap = (8.0 * self.scale) as i32;
+        self.draw_text(&name_w, self.font_name, TEXT, x0, text_y, x1 - vw - gap, 1.0);
+        self.draw_text(&val_w, self.font_val, val_color, x1 - vw, text_y, x1, 1.0);
+
+        // Track, then the fill clipped to the animated level.
+        let (cx, cy) = ((x0 + x1) as f32 / 2.0, bar_y + bar_h / 2.0);
+        let (hw, hh) = ((x1 - x0) as f32 / 2.0, bar_h / 2.0);
+        let fill_edge = x0 as f32 + (x1 - x0) as f32 * clamp01(an.shown);
+        for y in (bar_y.floor() as i32 - 1).max(0)..((bar_y + bar_h).ceil() as i32 + 1).min(h) {
+            for x in (x0 - 1).max(0)..(x1 + 1).min(w) {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                let cov = clamp01(0.5 - sd_round_rect(px - cx, py - cy, hw, hh, hh));
+                if cov <= 0.0 {
+                    continue;
+                }
+                let px_i = ((y * w + x) * 4) as usize;
+                over(&mut self.canvas[px_i..], BORDER, cov);
+                let fill = cov * clamp01(fill_edge - px + 0.5);
+                if fill > 0.0 {
+                    over(&mut self.canvas[px_i..], fill_color, fill);
+                }
+            }
+        }
+    }
+
+    fn render_picker(&mut self, channels: &[Channel], an: &Anim, t: f32) {
+        let g = &self.geo;
+        let (w, h) = (g.w, g.h);
+        let n = channels.len();
 
         let accent = channels[an.sel].icon.as_ref().map_or(FALLBACK_ACCENT, |i| i.accent.map(f32::from));
         let ring_vis = ease_out((t - (ICON_DELAY_MS + 80.0)) / ICON_MS);
@@ -355,50 +472,58 @@ impl Overlay {
     }
 
     fn draw_label(&mut self, name: &str, val: &str, val_color: [f32; 3], alpha: f32) {
-        let Some(mask) = self.mask.as_mut() else { return };
-        let (w, label_h) = (self.geo.w, self.geo.label_h);
         let y_off = (self.geo.pad_top + self.geo.tile + self.geo.label_gap) as i32;
         let gap = (8.0 * self.scale) as i32;
-        let wide = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
         let (name_w, val_w) = (wide(name), wide(val));
+        let nw = self.text_width(self.font_name, &name_w);
+        let vw = self.text_width(self.font_val, &val_w);
+        let x = (self.geo.w - (nw + gap + vw)) / 2;
+        self.draw_text(&name_w, self.font_name, TEXT, x, y_off, self.geo.w, alpha);
+        self.draw_text(&val_w, self.font_val, val_color, x + nw + gap, y_off, self.geo.w, alpha);
+    }
 
-        let measure = |dc: HDC, font: HFONT, s: &[u16]| unsafe {
-            let old = SelectObject(dc, font.into());
+    fn text_width(&self, font: HFONT, s: &[u16]) -> i32 {
+        let Some(mask) = self.mask.as_ref() else { return 0 };
+        unsafe {
+            let old = SelectObject(mask.dc, font.into());
             let mut sz = SIZE::default();
-            let _ = GetTextExtentPoint32W(dc, s, &mut sz);
-            SelectObject(dc, old);
+            let _ = GetTextExtentPoint32W(mask.dc, s, &mut sz);
+            SelectObject(mask.dc, old);
             sz.cx
-        };
-        let nw = measure(mask.dc, self.font_name, &name_w);
-        let vw = measure(mask.dc, self.font_val, &val_w);
-        let mut x = (w - (nw + gap + vw)) / 2;
-
-        for (text, font, color, tw) in
-            [(&name_w, self.font_name, TEXT, nw), (&val_w, self.font_val, val_color, vw)]
-        {
-            unsafe {
-                let m = mask.bytes();
-                m.fill(0);
-                let old = SelectObject(mask.dc, font.into());
-                SetBkMode(mask.dc, TRANSPARENT);
-                SetTextColor(mask.dc, COLORREF(0x00ffffff));
-                let _ = TextOutW(mask.dc, 0, 0, text);
-                SelectObject(mask.dc, old);
-                let _ = GdiFlush();
-            }
-            let m = mask.bytes();
-            for yy in 0..label_h {
-                for xx in 0..(tw + 2).min(w) {
-                    let cov = m[((yy * w + xx) * 4 + 1) as usize] as f32 / 255.0;
-                    let (dx, dy) = (x + xx, y_off + yy);
-                    if cov > 0.0 && dx >= 0 && dx < w && dy >= 0 && dy < self.geo.h {
-                        over(&mut self.canvas[((dy * w + dx) * 4) as usize..], color, cov * alpha);
-                    }
-                }
-            }
-            x += tw + gap;
         }
     }
+
+    /// Draws `text` with its top-left at (`x`, `y_off`), clipped at `clip_right`.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_text(&mut self, text: &[u16], font: HFONT, color: [f32; 3], x: i32, y_off: i32, clip_right: i32, alpha: f32) {
+        let tw = self.text_width(font, text);
+        let Some(mask) = self.mask.as_mut() else { return };
+        let (w, label_h) = (self.geo.w, self.geo.label_h);
+        unsafe {
+            let m = mask.bytes();
+            m.fill(0);
+            let old = SelectObject(mask.dc, font.into());
+            SetBkMode(mask.dc, TRANSPARENT);
+            SetTextColor(mask.dc, COLORREF(0x00ffffff));
+            let _ = TextOutW(mask.dc, 0, 0, text);
+            SelectObject(mask.dc, old);
+            let _ = GdiFlush();
+        }
+        let m = mask.bytes();
+        for yy in 0..label_h {
+            for xx in 0..(tw + 2).min(w) {
+                let cov = m[((yy * w + xx) * 4 + 1) as usize] as f32 / 255.0;
+                let (dx, dy) = (x + xx, y_off + yy);
+                if cov > 0.0 && dx >= 0 && dx < clip_right.min(w) && dy >= 0 && dy < self.geo.h {
+                    over(&mut self.canvas[((dy * w + dx) * 4) as usize..], color, cov * alpha);
+                }
+            }
+        }
+    }
+}
+
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().collect()
 }
 
 /// Signed distance from (px, py) to a rounded rectangle centred at the origin.

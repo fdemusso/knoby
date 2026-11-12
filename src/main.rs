@@ -170,10 +170,11 @@ fn handle_key(key: Key) {
 }
 
 fn adjust(up: bool) {
-    with_app(|a| {
+    let from = with_app(|a| {
         let mut g = a.wl.shared.lock().unwrap();
         let idx = active_index(&a.active, &g.channels);
         let ch = &mut g.channels[idx];
+        let from = ch.level;
         let d = if up { a.cfg.volume_step } else { -a.cfg.volume_step };
         ch.level = ((ch.level + d).clamp(0.0, 1.0) * 10000.0).round() / 10000.0;
         ch.local_set = Some(Instant::now());
@@ -183,19 +184,23 @@ fn adjust(up: bool) {
             eprintln!("  adjust step={d:+.4} -> level={level}");
         }
         a.wl.set_level(&id, level);
+        from
     });
+    show_volume(from);
 }
 
 fn toggle_mute() {
-    with_app(|a| {
+    let level = with_app(|a| {
         let mut g = a.wl.shared.lock().unwrap();
         let idx = active_index(&a.active, &g.channels);
         let ch = &mut g.channels[idx];
         ch.muted = !ch.muted;
-        let (id, muted) = (ch.id.clone(), ch.muted);
+        let (id, muted, level) = (ch.id.clone(), ch.muted, ch.level);
         drop(g);
         a.wl.set_muted(&id, muted);
+        level
     });
+    show_volume(level);
 }
 
 fn click_normal() {
@@ -231,6 +236,36 @@ fn open_overlay() {
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         SetTimer(Some(hwnd), T_SEL, timeout_ms, None);
         SetTimer(Some(hwnd), T_ANIM, FRAME_MS, None);
+    }
+}
+
+/// Shows (or refreshes) the volume bar for the active channel, whose level was
+/// `from` before the change. Does nothing while the picker is open.
+fn show_volume(from: f32) {
+    let shown = with_app(|a| {
+        if !a.cfg.volume_overlay || a.selecting.is_some() {
+            return None;
+        }
+        let g = a.wl.shared.lock().unwrap();
+        if g.channels.is_empty() {
+            return None;
+        }
+        let idx = active_index(&a.active, &g.channels);
+        let show = a.overlay.show_volume(idx, from, &a.cfg);
+        if show {
+            a.overlay.tick(&g.channels);
+        }
+        Some((a.hwnd, a.cfg.volume_overlay_ms, show))
+    });
+    let Some((hwnd, timeout_ms, show)) = shown else { return };
+    unsafe {
+        if show {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            SetTimer(Some(hwnd), T_ANIM, FRAME_MS, None);
+        }
+        // Reuses the picker's idle timer: it only starts the slide-out.
+        SetTimer(Some(hwnd), T_SEL, timeout_ms, None);
     }
 }
 
@@ -329,7 +364,13 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                     }
                     false
                 });
-                if go {
+                if go && std::env::var_os("KNOBY_PREVIEW_VOLUME").is_some() {
+                    let from = with_app(|a| {
+                        let g = a.wl.shared.lock().unwrap();
+                        g.channels[active_index(&a.active, &g.channels)].level
+                    });
+                    show_volume(from);
+                } else if go {
                     open_overlay();
                 }
             }

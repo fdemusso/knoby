@@ -49,6 +49,10 @@ pub struct Config {
     pub overlay_corner: Corner,
     /// Distance from the screen edge, in pixels at 100% scaling.
     pub overlay_margin: i32,
+    /// Show the volume bar when the knob changes the volume or mutes.
+    pub volume_overlay: bool,
+    /// The volume bar closes after this long without input.
+    pub volume_overlay_ms: u32,
 }
 
 impl Default for Config {
@@ -61,6 +65,8 @@ impl Default for Config {
             select_timeout_ms: 4000,
             overlay_corner: Corner::TopRight,
             overlay_margin: 24,
+            volume_overlay: true,
+            volume_overlay_ms: 1500,
         }
     }
 }
@@ -89,6 +95,12 @@ overlay_corner = \"top-right\"
 
 # Distance from the screen edge in pixels (0-200).
 overlay_margin = 24
+
+# Show a volume bar in the same corner when the knob changes the volume or mutes (true/false).
+volume_overlay = true
+
+# The volume bar closes after this many milliseconds without input (500-10000).
+volume_overlay_ms = 1500
 ";
 
 pub fn path() -> Option<PathBuf> {
@@ -137,6 +149,11 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "double_click_ms" => int(100, 600).map(|v| cfg.double_click_ms = v as u32),
             "select_timeout_ms" => int(1000, 15000).map(|v| cfg.select_timeout_ms = v as u32),
             "overlay_margin" => int(0, 200).map(|v| cfg.overlay_margin = v as i32),
+            "volume_overlay_ms" => int(500, 10000).map(|v| cfg.volume_overlay_ms = v as u32),
+            "volume_overlay" => value
+                .parse()
+                .map(|v| cfg.volume_overlay = v)
+                .map_err(|_| "`volume_overlay` must be true or false".to_owned()),
             "overlay_corner" => Corner::parse(value)
                 .map(|c| cfg.overlay_corner = c)
                 .ok_or_else(|| "`overlay_corner` must be top-right, top-left, bottom-right or bottom-left".to_owned()),
@@ -174,5 +191,17 @@ mod tests {
         let (cfg, w) = parse("volume_step = 99\nselect_detents = two\nbogus = 1\nno equals sign\noverlay_corner = middle\n");
         assert_eq!(cfg, Config::default());
         assert_eq!(w.len(), 5, "{w:?}");
+    }
+
+    #[test]
+    fn volume_overlay_settings() {
+        let (cfg, w) = parse("volume_overlay = false\nvolume_overlay_ms = 2500\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!cfg.volume_overlay);
+        assert_eq!(cfg.volume_overlay_ms, 2500);
+
+        let (cfg, w) = parse("volume_overlay = yes\nvolume_overlay_ms = 10\n");
+        assert_eq!(cfg, Config::default());
+        assert_eq!(w.len(), 2, "{w:?}");
     }
 }
