@@ -30,6 +30,8 @@ listening to: music, game, browser or voice chat. Knoby makes that happen.
 ## Features
 
 - **Per-channel volume** on any Wave Link software channel: turn for volume, click to mute / unmute.
+- **Volume bar**: turning or clicking the knob slides in a small progress bar with the channel icon, name and
+  level, in the same screen corner as the picker. It fades away on its own and can be turned off.
 - **Channel picker**: double-click the knob, turn to move between your channel icons, click to confirm.
   An unobtrusive overlay slides in at a screen corner and never steals focus, so it is safe to use
   mid-game.
@@ -89,6 +91,8 @@ menu: **Open config file** to edit it, **Reload config** to apply changes withou
 | `select_timeout_ms` | `4000` | The picker closes after this long without input (1000-15000) |
 | `overlay_corner` | `"top-right"` | `top-right`, `top-left`, `bottom-right` or `bottom-left` |
 | `overlay_margin` | `24` | Distance from the screen edge, in pixels (0-200) |
+| `volume_overlay` | `true` | Show the volume bar when the knob changes the volume or mutes |
+| `volume_overlay_ms` | `1500` | The volume bar closes after this long without input (500-10000) |
 
 Invalid values are ignored (the default is used) and reported on stderr in debug builds.
 
@@ -103,7 +107,8 @@ cargo test
 ```
 
 Developer switches (environment variables): `KNOBY_DEBUG=1` logs every intercepted key,
-`KNOBY_PREVIEW=<file.png>` opens the overlay and saves one frame, `KNOBY_ACCEPT_INJECTED=1` lets scripted
+`KNOBY_PREVIEW=<file.png>` opens the overlay and saves one frame (add `KNOBY_PREVIEW_VOLUME=1` for the volume
+bar), `KNOBY_ACCEPT_INJECTED=1` lets scripted
 key presses drive Knoby (used for automated testing).
 
 ## Compatibility and limitations
